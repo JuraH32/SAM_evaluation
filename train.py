@@ -430,8 +430,7 @@ def main():
     width_factor = 8
     dropout = 0.0
 
-    device = torch.device("cpu")
-        # "cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     model = WideResNet(depth, width_factor, dropout, in_channels=3, labels=10).to(device)
     train_dataloder, val_dataloader, test_dataloader = create_dataloaders(dataset_name="cifar10",
                                                                           batch_size=batch_size,
