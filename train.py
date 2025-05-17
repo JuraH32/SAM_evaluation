@@ -7,8 +7,13 @@ import time
 import matplotlib.pyplot as plt
 import wandb
 
+from data.create_dataloaders import create_dataloaders
+from model.smooth_cross_entropy import smooth_crossentropy
+from model.wide_res_net import WideResNet
 from sam import SAM
 from util.bypass_bn import enable_running_stats, disable_running_stats
+from util.initialize import initialize
+from util.step_lr import StepLR
 
 
 # Enum for optimizers
@@ -39,7 +44,7 @@ def get_optimizer(model, optimizer):
 
 
 
-def train_multiple_models(configs, train_loader, val_loader, dataset_name, device, use_wandb=True):
+def train_multiple_models(configs, train_loader, val_loader, test_loader, dataset_name, device, use_wandb=True):
     """
     Train multiple models with different configurations.
     Args:
@@ -48,21 +53,22 @@ def train_multiple_models(configs, train_loader, val_loader, dataset_name, devic
                         'num_epochs' 'save_dir', 'early_stopping_patience' and 'model_name'.
     """
     for config in configs:
+        initialize(42)
         model = config['model']
         criterion = config.get('criterion', nn.MSELoss)
-        optimizer = config.get('optimizer', {'optimizer_type': OptimizerType.SGD})
+        optimizer = config.get('optimizer', {'optimizer_type': OptimizerType.SGD, "learning_rate": 0.001})
         num_epochs = config.get('num_epochs', 100)
         save_dir = config.get('save_dir', 'checkpoints')
-        early_stopping_patience = config.get('early_stopping_patience', 10)
+        early_stopping_patience = config.get('early_stopping_patience', 20)
         model_name = config.get('model_name', 'model')
 
         run = wandb.init(project=config['model_name'], name=config['model_name'], config={
             "architecture": config['model_name'],
             "dataset": dataset_name,
-            "learning_rate": config['optimizer'].param_groups[0]['lr'],
-            "batch_size": config['batch_size'],
+            "learning_rate": config['optimizer'].get('learning_rate', 0.001),
+            "batch_size": config['optimizer'].get('batch_size', 128),
             "epochs": num_epochs,
-            "optimizer": config['optimizer'].__class__.__name__,
+            "optimizer": config['optimizer'].get('optimizer_type', OptimizerType.SGD),
         })
 
         print(f'\nTraining model: {model_name}')
@@ -70,9 +76,9 @@ def train_multiple_models(configs, train_loader, val_loader, dataset_name, devic
             model=model,
             train_loader=train_loader,
             val_loader=val_loader,
+            test_loader=test_loader,
             criterion=criterion,
             optimizer=optimizer,
-
             num_epochs=num_epochs,
             device=device,
             save_dir=save_dir,
@@ -87,6 +93,7 @@ def train_model(
         model,
         train_loader,
         val_loader,
+        test_loader,
         criterion,
         optimizer,
         num_epochs=25,
@@ -105,7 +112,6 @@ def train_model(
         val_loader: DataLoader for validation data
         criterion: Loss function
         optimizer: Optimizer for training
-        scheduler: Learning rate scheduler (optional)
         num_epochs: Number of epochs to train
         device: Device to train on ('cuda', 'cpu', 'mps')
         save_dir: Directory to save model checkpoints
@@ -138,8 +144,11 @@ def train_model(
     # Move model to device
     model.to(device)
 
-    optimizer = get_optimizer(model, optimizer)
     optimizer_type = optimizer.get('optimizer_type', OptimizerType.SGD)
+    learning_rate = optimizer.get('learning_rate', 0.001)
+    optimizer = get_optimizer(model, optimizer)
+
+    scheduler = StepLR(optimizer, learning_rate, num_epochs)
 
     # Main training loop
     for epoch in range(num_epochs):
@@ -163,7 +172,7 @@ def train_model(
                 # SAM optimization steps
                 enable_running_stats(model)
                 predictions = model(inputs)
-                loss = criterion(predictions, labels)
+                loss = criterion(predictions, labels).mean()
                 loss.backward()
                 optimizer.first_step(zero_grad=True)
 
@@ -171,13 +180,13 @@ def train_model(
                 # This is important for models with BatchNorm layers
                 disable_running_stats(model)
                 predictions = model(inputs)
-                loss = criterion(predictions, labels)
-                loss.backward()
+                loss2 = criterion(predictions, labels)
+                loss2.mean().backward()
                 optimizer.second_step(zero_grad=True)
 
             else:
                 predictions = model(inputs)
-                loss = criterion(predictions, labels)
+                loss = criterion(predictions, labels).mean()
                 loss.backward()
                 optimizer.step()
                 optimizer.zero_grad()
@@ -185,13 +194,12 @@ def train_model(
 
             with torch.no_grad():
                 # Get predictions
-                _, preds = torch.max(predictions, 1)
-
-                # Update running statistics
+                correct = torch.argmax(predictions.data, 1) == labels
                 batch_loss = loss.item() * inputs.size(0)
-                batch_acc = torch.sum(preds == labels.data).double() / inputs.size(0)
+                batch_acc = torch.sum(correct).double() / inputs.size(0)
                 running_loss += batch_loss
-                running_corrects += torch.sum(preds == labels.data)
+                running_corrects += torch.sum(correct)
+                scheduler(epoch)
 
                 # Update progress bar with more detailed metrics
                 train_pbar.set_postfix({
@@ -228,16 +236,14 @@ def train_model(
 
                 # Forward pass
                 outputs = model(inputs)
-                loss = criterion(outputs, labels)
+                loss = criterion(outputs, labels).mean()
 
                 # Get predictions
-                _, preds = torch.max(outputs, 1)
-
-                # Update running statistics
+                correct = torch.argmax(outputs.data, 1) == labels
                 batch_loss = loss.item() * inputs.size(0)
-                batch_acc = torch.sum(preds == labels.data).double() / inputs.size(0)
+                batch_acc = torch.sum(correct).double() / inputs.size(0)
                 running_loss += batch_loss
-                running_corrects += torch.sum(preds == labels.data)
+                running_corrects += torch.sum(correct)
 
                 # Update progress bar with more detailed metrics
                 val_pbar.set_postfix({
@@ -245,6 +251,13 @@ def train_model(
                     'batch_acc': f'{batch_acc:.4f}',
                     'avg_loss': f'{running_loss / ((batch_idx + 1) * inputs.size(0)):.4f}'
                 })
+
+                if use_wandb and batch_idx % 10 == 0:
+                    wandb.log({
+                        "val_batch": epoch * len(val_loader) + batch_idx,
+                        "val_batch_loss": batch_loss / inputs.size(0),
+                        "val_batch_acc": batch_acc.item()
+                    })
 
         # Calculate epoch statistics
         epoch_val_loss = running_loss / len(val_loader.dataset)
@@ -334,6 +347,40 @@ def train_model(
     if use_wandb:
         wandb.log({"training_curves": wandb.Image(fig)})
 
+    # Evaluate on test set
+    model.eval()
+    test_loss = 0
+    test_corrects = 0
+
+    with torch.no_grad():
+        test_pbar = tqdm(test_loader, desc='Testing')
+        for batch_idx, (inputs, labels) in enumerate(test_pbar):
+            inputs = inputs.to(device)
+            labels = labels.to(device)
+
+            outputs = model(inputs)
+            loss = criterion(outputs, labels).mean()
+
+            # Get predictions
+            correct = torch.argmax(outputs.data, 1) == labels
+            batch_loss = loss.item() * inputs.size(0)
+            batch_acc = torch.sum(correct).double() / inputs.size(0)
+            test_loss += batch_loss
+            test_corrects += torch.sum(correct)
+
+            # Update progress bar with more detailed metrics
+            test_pbar.set_postfix({
+                'batch_loss': f'{batch_loss / inputs.size(0):.4f}',
+                'batch_acc': f'{batch_acc:.4f}',
+                'avg_loss': f'{test_loss / ((batch_idx + 1) * inputs.size(0)):.4f}'
+            })
+
+    if use_wandb:
+        wandb.log({
+            "test_loss": test_loss / len(test_loader.dataset),
+            "test_acc": test_corrects.double() / len(test_loader.dataset)
+        })
+
     return model, history
 
 
@@ -376,69 +423,30 @@ def plot_training_curves(history, save_dir, model_name):
 
 
 def main():
-    """
-    Example usage of train_model function with wandb integration
-    """
-    # This is a placeholder - you would need to:
-    # 1. Create/load your model
-    # 2. Define your datasets and data loaders
-    # 3. Choose loss function and optimizer
-    # 4. Call train_model with your configurations
+    batch_size = 128
+    threads = 2
 
-    # Example (commented out):
-    """
-    # Set device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    depth = 16
+    width_factor = 8
+    dropout = 0.0
 
-    # Initialize wandb
-    run = wandb.init(
-        project="your-project-name",
-        name="experiment-name",
-        config={
-            "architecture": "YourModel",
-            "dataset": "YourDataset",
-            "learning_rate": 0.001,
-            "batch_size": 32,
-            "epochs": 50,
-            "optimizer": "Adam",
-            # Add any other hyperparameters you want to track
-        }
-    )
+    device = torch.device("cpu")
+        # "cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+    model = WideResNet(depth, width_factor, dropout, in_channels=3, labels=10).to(device)
+    train_dataloder, val_dataloader, test_dataloader = create_dataloaders(dataset_name="cifar10",
+                                                                          batch_size=batch_size,
+                                                                          num_workers=threads)
 
-    # Create model
-    model = YourModel()
+    configs = [
+        {"model": model, "criterion": smooth_crossentropy, "optimizer": {"optimizer_type": OptimizerType.SGD},
+         "num_epochs": 2, "model_name": "WRN-SGD"},
+        {"model": model, "criterion": smooth_crossentropy, "optimizer": {"optimizer_type": OptimizerType.SAM},
+         "num_epochs": 2, "model_name": "WRN-SAM"},
+        {"model": model, "criterion": smooth_crossentropy, "optimizer": {"optimizer_type": OptimizerType.ADAM},
+         "num_epochs": 2, "model_name": "WRN-ADAM"},
+    ]
 
-    # Define loss function and optimizer
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-    # Create data loaders
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
-
-    # Create learning rate scheduler
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=5, factor=0.5)
-
-    # Train the model
-    model, history = train_model(
-        model=model,
-        train_loader=train_loader,
-        val_loader=val_loader,
-        criterion=criterion,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        num_epochs=50,
-        device=device,
-        save_dir='checkpoints',
-        early_stopping_patience=10,
-        model_name='my_model',
-        use_wandb=True
-    )
-
-    # Finish wandb run
-    wandb.finish()
-    """
-    pass
+    train_multiple_models(configs, train_dataloder, val_dataloader, test_dataloader, "cifar10", device=device)
 
 
 if __name__ == "__main__":
