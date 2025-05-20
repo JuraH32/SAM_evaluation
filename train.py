@@ -328,16 +328,19 @@ def train_model(
             early_stopping_counter += 1
             print(f'Early stopping counter: {early_stopping_counter}/{early_stopping_patience}')
 
-        # Save checkpoint every epoch
-        checkpoint_path = os.path.join(save_dir, f'{model_name}_epoch_{epoch + 1}.pth')
-        torch.save({
-            'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'val_loss': epoch_val_loss,
-            'val_acc': epoch_val_acc,
-            'val_err_rate': 1 - epoch_val_acc.item(),
-        }, checkpoint_path)
+        # Save checkpoint every 25 epoch
+        if (epoch + 1) % 25 == 0:
+            checkpoint_path = os.path.join(save_dir, f'{model_name}_epoch_{epoch + 1}.pth')
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_loss': epoch_val_loss,
+                'val_acc': epoch_val_acc,
+            }, checkpoint_path)
+
+            if use_wandb:
+                wandb.save(checkpoint_path)
 
         # Check for early stopping
         if early_stopping_counter >= early_stopping_patience:
