@@ -186,7 +186,7 @@ def train_model(
         if verbose:
             train_pbar = tqdm(train_loader, desc=f'Training')
 
-        for batch_idx, (inputs, labels) in enumerate(train_pbar):
+        for batch_idx, (inputs, labels) in enumerate(train_pbar if verbose else train_loader):
             inputs = inputs.to(device)
             labels = labels.to(device)
 
@@ -245,7 +245,7 @@ def train_model(
             if verbose:
                 val_pbar = tqdm(val_loader, desc=f'Validation')
 
-            for batch_idx, (inputs, labels) in enumerate(val_pbar):
+            for batch_idx, (inputs, labels) in enumerate(val_pbar if verbose else val_loader):
                 inputs = inputs.to(device)
                 labels = labels.to(device)
 
