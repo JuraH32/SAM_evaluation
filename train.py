@@ -51,7 +51,7 @@ def get_optimizer(model, optimizer):
                lr=learning_rate, momentum=momentum, weight_decay=weight_decay)
 
 
-def train_multiple_models(configs, train_loader, val_loader, test_loader, dataset_name, device, use_wandb=True):
+def train_multiple_models(configs, train_loader, val_loader, test_loader, dataset_name, device, use_wandb=True, verbose=True):
     """
     Train multiple models with different configurations.
     Args:
@@ -96,7 +96,8 @@ def train_multiple_models(configs, train_loader, val_loader, test_loader, datase
             save_dir=save_dir,
             early_stopping_patience=early_stopping_patience,
             model_name=model_name,
-            use_wandb=use_wandb
+            use_wandb=use_wandb,
+            verbose=verbose
         )
 
         wandb.finish()
@@ -114,7 +115,8 @@ def train_model(
         save_dir='checkpoints',
         early_stopping_patience=10,
         model_name='model',
-        use_wandb=True
+        use_wandb=True,
+        verbose=True
 ):
     """
     Train a PyTorch model.
@@ -131,6 +133,7 @@ def train_model(
         early_stopping_patience: Number of epochs to wait before early stopping
         model_name: Name for saving the model
         use_wandb: Whether to log metrics to Weights & Biases
+        verbose: Whether to print metrics during training
 
     Returns:
         model: Trained model
@@ -180,7 +183,8 @@ def train_model(
         epoch_start_time = time.time()
 
         # Progress bar for training batches
-        train_pbar = tqdm(train_loader, desc=f'Training')
+        if verbose:
+            train_pbar = tqdm(train_loader, desc=f'Training')
 
         for batch_idx, (inputs, labels) in enumerate(train_pbar):
             inputs = inputs.to(device)
@@ -219,11 +223,12 @@ def train_model(
                 scheduler.step()
 
                 # Update progress bar with more detailed metrics
-                train_pbar.set_postfix({
-                    'batch_loss': f'{batch_loss / inputs.size(0):.4f}',
-                    'batch_acc': f'{batch_acc:.4f}',
-                    'avg_loss': f'{running_loss / ((batch_idx + 1) * inputs.size(0)):.4f}'
-                })
+                if verbose:
+                    train_pbar.set_postfix({
+                        'batch_loss': f'{batch_loss / inputs.size(0):.4f}',
+                        'batch_acc': f'{batch_acc:.4f}',
+                        'avg_loss': f'{running_loss / ((batch_idx + 1) * inputs.size(0)):.4f}'
+                    })
 
         # Calculate epoch statistics
         epoch_train_loss = running_loss / len(train_loader.dataset)
@@ -237,7 +242,8 @@ def train_model(
         # No gradient computation for validation
         with torch.no_grad():
             # Progress bar for validation batches
-            val_pbar = tqdm(val_loader, desc=f'Validation')
+            if verbose:
+                val_pbar = tqdm(val_loader, desc=f'Validation')
 
             for batch_idx, (inputs, labels) in enumerate(val_pbar):
                 inputs = inputs.to(device)
@@ -255,11 +261,12 @@ def train_model(
                 running_corrects += torch.sum(correct)
 
                 # Update progress bar with more detailed metrics
-                val_pbar.set_postfix({
-                    'batch_loss': f'{batch_loss / inputs.size(0):.4f}',
-                    'batch_acc': f'{batch_acc:.4f}',
-                    'avg_loss': f'{running_loss / ((batch_idx + 1) * inputs.size(0)):.4f}'
-                })
+                if verbose:
+                    val_pbar.set_postfix({
+                        'batch_loss': f'{batch_loss / inputs.size(0):.4f}',
+                        'batch_acc': f'{batch_acc:.4f}',
+                        'avg_loss': f'{running_loss / ((batch_idx + 1) * inputs.size(0)):.4f}'
+                    })
 
         # Calculate epoch statistics
         epoch_val_loss = running_loss / len(val_loader.dataset)
@@ -270,12 +277,13 @@ def train_model(
 
         epoch_time_elapsed = time.time() - epoch_start_time
 
-        # Print epoch results with better formatting
-        print(f'\nEpoch {epoch + 1} Results:')
-        print(f'Train Loss: {epoch_train_loss:.4f} | Train Acc: {epoch_train_acc:.4f}')
-        print(f'Val Loss:   {epoch_val_loss:.4f} | Val Acc:   {epoch_val_acc:.4f}')
-        print(f'Learning Rate: {current_lr:.6f}')
-        print(f'Epoch Time: {epoch_time_elapsed // 60:.0f}m {epoch_time_elapsed % 60:.0f}s')
+        if verbose:
+            # Print epoch results with better formatting
+            print(f'\nEpoch {epoch + 1} Results:')
+            print(f'Train Loss: {epoch_train_loss:.4f} | Train Acc: {epoch_train_acc:.4f}')
+            print(f'Val Loss:   {epoch_val_loss:.4f} | Val Acc:   {epoch_val_acc:.4f}')
+            print(f'Learning Rate: {current_lr:.6f}')
+            print(f'Epoch Time: {epoch_time_elapsed // 60:.0f}m {epoch_time_elapsed % 60:.0f}s')
 
         # Record history
         history['train_loss'].append(epoch_train_loss)
@@ -349,18 +357,18 @@ def train_model(
         print(
             f'Loaded best model from epoch {checkpoint["epoch"] + 1} with validation loss: {checkpoint["val_loss"]:.4f}')
 
-    # Plot training curves
-    fig = plot_training_curves(history, save_dir, model_name)
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png')
-    buf.seek(0)
-    img = Image.open(buf)
-    img_np = np.array(img)
-    buf.close()
-
-    # Log the figure to wandb
-    if use_wandb:
-        wandb.log({"training_curves": wandb.Image(img_np)})
+    # # Plot training curves
+    # fig = plot_training_curves(history, save_dir, model_name)
+    # buf = io.BytesIO()
+    # fig.savefig(buf, format='png')
+    # buf.seek(0)
+    # img = Image.open(buf)
+    # img_np = np.array(img)
+    # buf.close()
+    #
+    # # Log the figure to wandb
+    # if use_wandb:
+    #     wandb.log({"training_curves": wandb.Image(img_np)})
 
     if test_loader is None:
         print("No test loader provided. Skipping test evaluation.")
