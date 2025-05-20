@@ -475,39 +475,48 @@ def main():
                                                                            num_workers=threads,
                                                                            validation_split=0.0)
 
-    N = 1
+    N = 3
 
-    num_epochs = 200
+    num_epochs = 400
 
     configs = [
         # CIFAR 10
-        # {"model": model_fun_WRN, "criterion": smooth_crossentropy,
-        #  "optimizer": {"optimizer_type": OptimizerType.SGD, "learning_rate": 0.1},
-        #  "num_epochs": num_epochs, "model_name": "WRN", "name_suffix": ""},
-        # {"model": model_fun_WRN, "criterion": smooth_crossentropy,
-        #  "optimizer": {"optimizer_type": OptimizerType.SAM, "learning_rate": 0.1, "momentum": 0.9, "weight_decay": 5e-4,
-        #                "rho": 0.05},
-        #  "num_epochs": int(num_epochs / 2), "model_name": "WRN", "name_suffix": ""},
-        #
-        # {"model": model_fun_pyramidnet, "criterion": smooth_crossentropy,
-        # "optimizer": {"optimizer_type": OptimizerType.SGD, "learning_rate": 0.05, "momentum": 0.9, "weight_decay": 5e-4},
-        # "num_epochs": num_epochs, "model_name": "PyramidNet-ShakeDrop", "name_suffix": ""},
-        # {"model": model_fun_pyramidnet, "criterion": smooth_crossentropy,
-        # "optimizer": {"optimizer_type": OptimizerType.SAM, "learning_rate": 0.05, "momentum": 0.9, "weight_decay": 5e-4,
-        #             "rho": 0.05},
-        # "num_epochs": int(num_epochs / 2), "model_name": "PyramidNet-ShakeDrop", "name_suffix": ""},
+        {"model": model_fun_WRN, "criterion": smooth_crossentropy,
+         "optimizer": {"optimizer_type": OptimizerType.SGD, "learning_rate": 0.1},
+         "num_epochs": num_epochs, "model_name": "WRN", "name_suffix": ""},
+        {"model": model_fun_WRN, "criterion": smooth_crossentropy,
+         "optimizer": {"optimizer_type": OptimizerType.SAM, "learning_rate": 0.1, "momentum": 0.9, "weight_decay": 5e-4,
+                       "rho": 0.05},
+         "num_epochs": int(num_epochs / 2), "model_name": "WRN", "name_suffix": ""},
+
+        {"model": model_fun_pyramidnet, "criterion": smooth_crossentropy,
+        "optimizer": {"optimizer_type": OptimizerType.SGD, "learning_rate": 0.05, "momentum": 0.9, "weight_decay": 5e-4},
+        "num_epochs": num_epochs, "model_name": "PyramidNet-ShakeDrop", "name_suffix": ""},
+        {"model": model_fun_pyramidnet, "criterion": smooth_crossentropy,
+        "optimizer": {"optimizer_type": OptimizerType.SAM, "learning_rate": 0.05, "momentum": 0.9, "weight_decay": 5e-4,
+                    "rho": 0.05},
+        "num_epochs": int(num_epochs / 2), "model_name": "PyramidNet-ShakeDrop", "name_suffix": ""},
 
         # {"model": model_fun_shake_pyramidnet, "criterion": smooth_crossentropy,
         #  "optimizer": {"optimizer_type": OptimizerType.SGD, "learning_rate": 0.02, "momentum": 0.9,"weight_decay": 5e-4},
         #  "num_epochs": int(num_epochs / 2), "model_name": "PyramidNet-ShakeDrop", "name_suffix": "1"},
 
-        {"model": model_fun_shake_pyramidnet, "criterion": smooth_crossentropy,
-         "optimizer": {"optimizer_type": OptimizerType.SAM, "learning_rate": 0.02, "rho": 0.05, "momentum": 0.9,
-                       "weight_decay": 5e-4},
-         "num_epochs": int(num_epochs / 2), "model_name": "PyramidNet-ShakeDrop", "name_suffix": "1"},
+        # {"model": model_fun_shake_pyramidnet, "criterion": smooth_crossentropy,
+        #  "optimizer": {"optimizer_type": OptimizerType.SAM, "learning_rate": 0.02, "rho": 0.05, "momentum": 0.9,
+        #                "weight_decay": 5e-4},
+        #  "num_epochs": int(num_epochs / 2), "model_name": "PyramidNet-ShakeDrop", "name_suffix": "1"},
     ]
 
-    train_multiple_models(configs, train_dataloader, val_dataloader, test_dataloader, dataset_name, device=device)
+    repeated_configs = []
+
+    for i in range(N):
+        for config in configs:
+            new_config = config
+            new_config["name_suffix"] = f"{i + 1}"
+            repeated_configs.append(new_config)
+
+
+    train_multiple_models(repeated_configs, train_dataloader, val_dataloader, test_dataloader, dataset_name, device=device)
 
 
     dataset_name = 'cifar100'
@@ -522,14 +531,32 @@ def main():
                                                                            validation_split=0.0)
 
     configs = [
-        {"model": model_fun_shake_pyramidnet, "criterion": smooth_crossentropy,
+        {"model": model_fun_WRN, "criterion": smooth_crossentropy,
+         "optimizer": {"optimizer_type": OptimizerType.SGD, "learning_rate": 0.1},
+         "num_epochs": num_epochs, "model_name": "WRN", "name_suffix": ""},
+        {"model": model_fun_WRN, "criterion": smooth_crossentropy,
+         "optimizer": {"optimizer_type": OptimizerType.SAM, "learning_rate": 0.1, "momentum": 0.9, "weight_decay": 5e-4,
+                       "rho": 0.1},
+         "num_epochs": int(num_epochs / 2), "model_name": "WRN", "name_suffix": ""},
+
+        {"model": model_fun_pyramidnet, "criterion": smooth_crossentropy,
          "optimizer": {"optimizer_type": OptimizerType.SGD, "learning_rate": 0.05, "momentum": 0.9,
                        "weight_decay": 5e-4},
-         "num_epochs": num_epochs, "model_name": "PyramidNet-ShakeDrop", "name_suffix": "1"},
-        {"model": model_fun_shake_pyramidnet, "criterion": smooth_crossentropy,
-         "optimizer": {"optimizer_type": OptimizerType.SAM, "learning_rate": 0.05, "rho": 0.05, "momentum": 0.9,
-                       "weight_decay": 5e-4},
-         "num_epochs": int(num_epochs / 2), "model_name": "PyramidNet-ShakeDrop", "name_suffix": "1"},
+         "num_epochs": num_epochs, "model_name": "PyramidNet-ShakeDrop", "name_suffix": ""},
+        {"model": model_fun_pyramidnet, "criterion": smooth_crossentropy,
+         "optimizer": {"optimizer_type": OptimizerType.SAM, "learning_rate": 0.05, "momentum": 0.9,
+                       "weight_decay": 5e-4,
+                       "rho": 0.2},
+         "num_epochs": int(num_epochs / 2), "model_name": "PyramidNet-ShakeDrop", "name_suffix": ""},
+
+        # {"model": model_fun_shake_pyramidnet, "criterion": smooth_crossentropy,
+        #  "optimizer": {"optimizer_type": OptimizerType.SGD, "learning_rate": 0.05, "momentum": 0.9,
+        #                "weight_decay": 5e-4},
+        #  "num_epochs": num_epochs, "model_name": "PyramidNet-ShakeDrop", "name_suffix": "1"},
+        # {"model": model_fun_shake_pyramidnet, "criterion": smooth_crossentropy,
+        #  "optimizer": {"optimizer_type": OptimizerType.SAM, "learning_rate": 0.05, "rho": 0.05, "momentum": 0.9,
+        #                "weight_decay": 5e-4},
+        #  "num_epochs": int(num_epochs / 2), "model_name": "PyramidNet-ShakeDrop", "name_suffix": "1"},
 
     ]
 
