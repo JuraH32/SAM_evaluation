@@ -1,7 +1,11 @@
+import io
 import os
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from PIL import Image
 from tqdm import tqdm
 import time
 import matplotlib.pyplot as plt
@@ -347,10 +351,16 @@ def train_model(
 
     # Plot training curves
     fig = plot_training_curves(history, save_dir, model_name)
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png')
+    buf.seek(0)
+    img = Image.open(buf)
+    img_np = np.array(img)
+    buf.close()
 
     # Log the figure to wandb
     if use_wandb:
-        wandb.log({"training_curves": wandb.Image(fig)})
+        wandb.log({"training_curves": wandb.Image(img_np)})
 
     if test_loader is None:
         print("No test loader provided. Skipping test evaluation.")
@@ -450,12 +460,12 @@ def main():
     dropout = 0.0
 
     device = torch.device(
-        "cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
-    # model_fun_WRN = create_model_fun(WideResNet, depth=depth, width_factor=width_factor, dropout=dropout, in_channels=3, labels=100, device=device)
+        "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+    model_fun_WRN = create_model_fun(WideResNet, depth=depth, width_factor=width_factor, dropout=dropout, in_channels=3, labels=100, device=device)
 
     dataset_name = 'cifar10'
 
-    # model_fun_pyramidnet = create_model_fun(PyramidNet,device=device, dataset=dataset_name, depth=110, alpha=48, num_classes=10, bottleneck=False)
+    model_fun_pyramidnet = create_model_fun(PyramidNet,device=device, dataset=dataset_name, depth=110, alpha=48, num_classes=10, bottleneck=False)
 
     model_fun_shake_pyramidnet = create_model_fun(ShakePyramidNet, device=device, depth=110,
                                                   alpha=48, num_classes=10)
@@ -465,20 +475,32 @@ def main():
                                                                            num_workers=threads,
                                                                            validation_split=0.0)
 
+    N = 1
+
     num_epochs = 200
 
     configs = [
         # CIFAR 10
         # {"model": model_fun_WRN, "criterion": smooth_crossentropy,
         #  "optimizer": {"optimizer_type": OptimizerType.SGD, "learning_rate": 0.1},
-        #  "num_epochs": num_epochs, "model_name": "WRN", "name_suffix": "1"},
+        #  "num_epochs": num_epochs, "model_name": "WRN", "name_suffix": ""},
         # {"model": model_fun_WRN, "criterion": smooth_crossentropy,
-        #  "optimizer": {"optimizer_type": OptimizerType.SAM, "learning_rate": 0.1},
-        #  "num_epochs": int(num_epochs / 2), "model_name": "WRN", "name_suffix": "1"},
-        {"model": model_fun_shake_pyramidnet, "criterion": smooth_crossentropy,
-         "optimizer": {"optimizer_type": OptimizerType.SGD, "learning_rate": 0.02, "momentum": 0.9,
-                       "weight_decay": 5e-4},
-         "num_epochs": num_epochs, "model_name": "PyramidNet-ShakeDrop", "name_suffix": "1"},
+        #  "optimizer": {"optimizer_type": OptimizerType.SAM, "learning_rate": 0.1, "momentum": 0.9, "weight_decay": 5e-4,
+        #                "rho": 0.05},
+        #  "num_epochs": int(num_epochs / 2), "model_name": "WRN", "name_suffix": ""},
+        #
+        # {"model": model_fun_pyramidnet, "criterion": smooth_crossentropy,
+        # "optimizer": {"optimizer_type": OptimizerType.SGD, "learning_rate": 0.05, "momentum": 0.9, "weight_decay": 5e-4},
+        # "num_epochs": num_epochs, "model_name": "PyramidNet-ShakeDrop", "name_suffix": ""},
+        # {"model": model_fun_pyramidnet, "criterion": smooth_crossentropy,
+        # "optimizer": {"optimizer_type": OptimizerType.SAM, "learning_rate": 0.05, "momentum": 0.9, "weight_decay": 5e-4,
+        #             "rho": 0.05},
+        # "num_epochs": int(num_epochs / 2), "model_name": "PyramidNet-ShakeDrop", "name_suffix": ""},
+
+        # {"model": model_fun_shake_pyramidnet, "criterion": smooth_crossentropy,
+        #  "optimizer": {"optimizer_type": OptimizerType.SGD, "learning_rate": 0.02, "momentum": 0.9,"weight_decay": 5e-4},
+        #  "num_epochs": int(num_epochs / 2), "model_name": "PyramidNet-ShakeDrop", "name_suffix": "1"},
+
         {"model": model_fun_shake_pyramidnet, "criterion": smooth_crossentropy,
          "optimizer": {"optimizer_type": OptimizerType.SAM, "learning_rate": 0.02, "rho": 0.05, "momentum": 0.9,
                        "weight_decay": 5e-4},
@@ -487,8 +509,11 @@ def main():
 
     train_multiple_models(configs, train_dataloader, val_dataloader, test_dataloader, dataset_name, device=device)
 
+
     dataset_name = 'cifar100'
-    # model_fun_pyramidnet = create_model_fun(PyramidNet, device=device, dataset=dataset_name, depth=110, alpha=48, num_classes=100, bottleneck=False)
+
+    model_fun_WRN = create_model_fun(WideResNet, depth=depth, width_factor=width_factor, dropout=dropout, in_channels=3, labels=100, device=device)
+    model_fun_pyramidnet = create_model_fun(PyramidNet, device=device, dataset=dataset_name, depth=110, alpha=48, num_classes=100, bottleneck=False)
     model_fun_shake_pyramidnet = create_model_fun(ShakePyramidNet, device=device, depth=110,
                                                   alpha=48, num_classes=100)
     train_dataloader, val_dataloader, test_dataloader = create_dataloaders(dataset_name=dataset_name,
@@ -508,7 +533,7 @@ def main():
 
     ]
 
-    train_multiple_models(configs, train_dataloader, val_dataloader, test_dataloader, dataset_name, device=device)
+    # train_multiple_models(configs, train_dataloader, val_dataloader, test_dataloader, dataset_name, device=device)
 
 
 if __name__ == "__main__":
