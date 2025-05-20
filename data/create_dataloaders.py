@@ -28,11 +28,12 @@ def get_dataset_statistics(dataset_name):
     data = torch.cat([d[0] for d in torch.utils.data.DataLoader(dataset)])
     return data.mean(dim=[0, 2, 3]), data.std(dim=[0, 2, 3])
 
-def create_dataloaders(dataset_name="cifar10", batch_size=128, num_workers=2, pin_memory=True, shuffle=True):
+def create_dataloaders(dataset_name="cifar10", batch_size=128, num_workers=2, pin_memory=True, shuffle=True, validation_split=0.1):
     """
     Create dataloaders for the given dataset.
 
     Args:
+        validation_split (float): Fraction of the training data to use for validation.
         dataset_name (str): Name of the dataset to load.
         batch_size (int): Batch size for the dataloaders.
         num_workers (int): Number of workers for the dataloaders.
@@ -69,12 +70,14 @@ def create_dataloaders(dataset_name="cifar10", batch_size=128, num_workers=2, pi
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}. Supported datasets are: {DatasetEnum.CIFAR10}, {DatasetEnum.CIFAR100}, {DatasetEnum.IMAGENET}")
 
-    VALIDATION_SPLIT = 0.1
+    val_loader = None
 
-    train_dataset, val_dataset = torch.utils.data.random_split(train_dataset, [int(len(train_dataset) * (1 - VALIDATION_SPLIT)), int(len(train_dataset) * VALIDATION_SPLIT)])
+    if validation_split > 0:
+        train_dataset, val_dataset = torch.utils.data.random_split(train_dataset, [int(len(train_dataset) * (1 - validation_split)), int(len(train_dataset) * validation_split)])
+        val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
+                                                 num_workers=num_workers, pin_memory=pin_memory)
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers, pin_memory=pin_memory)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
 
     return train_loader, val_loader, test_loader
