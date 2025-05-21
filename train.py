@@ -60,14 +60,14 @@ def train_multiple_models(configs, train_loader, val_loader, test_loader, datase
                         'num_epochs' 'save_dir', 'early_stopping_patience' and 'model_name'.
     """
     for config in configs:
-        initialize(42)
+        # initialize(42)
         model_fun = config['model']
         model = model_fun()
         criterion = config.get('criterion', nn.MSELoss)
         optimizer = config.get('optimizer', {'optimizer_type': OptimizerType.SGD, "learning_rate": 0.001})
         num_epochs = config.get('num_epochs', 100)
         save_dir = config.get('save_dir', 'checkpoints')
-        early_stopping_patience = config.get('early_stopping_patience', 50)
+        early_stopping_patience = config.get('early_stopping_patience', 100)
         model_name = config.get('model_name', 'model')
         name_suffix = config.get('name_suffix', None)
 
@@ -220,7 +220,6 @@ def train_model(
                 batch_acc = torch.sum(correct).double() / inputs.size(0)
                 running_loss += batch_loss
                 running_corrects += torch.sum(correct)
-                scheduler.step()
 
                 # Update progress bar with more detailed metrics
                 if verbose:
@@ -229,6 +228,8 @@ def train_model(
                         'batch_acc': f'{batch_acc:.4f}',
                         'avg_loss': f'{running_loss / ((batch_idx + 1) * inputs.size(0)):.4f}'
                     })
+
+        scheduler.step()
 
         # Calculate epoch statistics
         epoch_train_loss = running_loss / len(train_loader.dataset)
@@ -472,7 +473,7 @@ def main():
 
     device = torch.device(
         "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
-    model_fun_WRN = create_model_fun(WideResNet, depth=depth, width_factor=width_factor, dropout=dropout, in_channels=3, labels=100, device=device)
+    model_fun_WRN = create_model_fun(WideResNet, depth=depth, width_factor=width_factor, dropout=dropout, in_channels=3, labels=10, device=device)
 
     dataset_name = 'cifar10'
 
