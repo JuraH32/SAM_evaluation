@@ -467,8 +467,8 @@ def main():
     batch_size = 128
     threads = 4
 
-    depth = 16
-    width_factor = 8
+    depth = 28
+    width_factor = 10
     dropout = 0.0
 
     device = torch.device(
